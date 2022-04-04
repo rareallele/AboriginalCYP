@@ -20,16 +20,17 @@
             <label for="fig_select"><strong style="font-size: 1em;">Select figure:</strong></label><br>
             <select id="fig_select" class="form-control" style="width: 100%" onchange="setIframe()">
                 <option id="figure1" value="Figures\yearly_deaths.html">Figure 1: Death rate by year</option>
-                <option id="figure2" value="Figures\rates_seifa.html">Figure 2: Deaths socio-economic disadvantage</option>
+                <option id="figure2" value="Figures\rates_seifa.html">Figure 2: Deaths by socio-economic disadvantage</option>
                 <option id="figure3" value="Figures\regions_map.html">Figure 3: Deaths by region</option>
+                <option id="figure4" value="Figures\cod_age_atsi.html">Figure 4: Deaths by category and age group</option>
             </select>
             <br>
         </div>
     </div>
 
     <div class="row" id="buttonBlock" style="display: none;">
-        <button class="sub-button activeButton" value="Figures\rates_seifa.html" onclick="subButtonSetIframe(this)">All deaths</button>
-        <button class="sub-button" value="Figures\rates_seifa_residents.html" onclick="subButtonSetIframe(this)">SA Residents</button>
+        <button class="sub-button activeButton" value="" onclick="subButtonSetIframe(this)"></button>
+        <button class="sub-button" value="" onclick="subButtonSetIframe(this)"></button>
     </div>
 
 

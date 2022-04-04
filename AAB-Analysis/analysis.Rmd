@@ -1,0 +1,386 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(odbc)
+library(DBI)
+library(plotly)
+#library(hablar)
+#library(rgdal)
+#library(sf)
+#library(zeallot)
+#library(ggalt)
+```
+
+Import exclusions and population data
+```{r message=FALSE}
+exclusions <- readxl::read_xlsx("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\exclusions_2022.xlsx")$`Case Number`
+yearly_denominators <- read_csv("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\Population\\yearly_denominators.csv")
+postcode_denominators <- read_csv("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\Population\\postcode_denominators_SRA.csv") %>% 
+  mutate(Postcode = as.character(Postcode))
+age_denominators <- read_csv("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\Population\\my_denominators.csv")
+```
+
+Import data
+```{r message=FALSE, warning=FALSE}
+# CDR_query <- read_file("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\SQL Server Management Studio\\Queries\\AnnualReport.sql")
+# 
+# con <- dbConnect(odbc(), "CDR-DSN")
+# 
+# CDR_Case <- dbGetQuery(con,
+#                        CDR_query)
+# 
+# data <- CDR_Case %>% 
+#   filter(!`Case Number` %in% exclusions,
+#          `Year of Death` %in% seq(2005,2020)) %>% # filter out exclusions
+#   mutate(State = trimws(toupper(State))) %>% 
+#   convert(fct(`Case Number`, Sex, SUDI, `Age Group`, `CP Contact`, `Cultural Background`,
+#               `COD Category`, `Coronial case?`, State, `Residential Status`)) %>% 
+#   mutate(`Age Group` = 
+#            fct_relevel(`Age Group`, "< 28 days", "1 to 11 months", "1 to 4 years", "5 to 9 years", "10 to 14 years", "15 to 17 years"),
+#          Sex = fct_recode(Sex, Male = "male", Female = "female")) %>% 
+#   rename(Year = `Year of Death`)
+
+data <- read_csv("data.csv") %>% 
+  filter(!`Case Number` %in% exclusions,
+         Year %in% seq(2005,2021)) %>% # filter out exclusions
+  #mutate(State = trimws(toupper(State))) %>%
+  hablar::convert(hablar::fct(`Case Number`, Sex, SUDI, `Age Group`, `CP Contact`, `Cultural Background`,
+              `COD Category`, `Coronial case?`, State)) %>%
+  mutate(`Age Group` =
+           fct_relevel(`Age Group`, "< 28 days", "1 to 11 months", "1 to 4 years", "5 to 9 years", "10 to 14 years", "15 to 17 years"),
+         Sex = fct_recode(Sex, Male = "male", Female = "female")) 
+```
+
+Calculate death rates
+```{r}
+rates_atsi <- data %>%
+  filter(`Cultural Background` %in% c("ATSI","Other")) %>% 
+  count(Year, `Cultural Background`) %>% # Numerator
+  bind_rows(data %>%
+            count(Year) %>%
+            mutate(`Cultural Background` = "Total")) %>% # Total numerator
+  left_join(yearly_denominators %>%
+            group_by(Year, `Cultural Background`) %>%
+            summarise_at(c("adjusted_population"), sum) %>%
+            ungroup() %>%
+            bind_rows(yearly_denominators %>%
+                      group_by(Year) %>%
+                      summarise_at(c("adjusted_population"), sum) %>%
+                      ungroup() %>%
+                      mutate(`Cultural Background` = "Total")), # Total denominator
+            by = c("Year", "Cultural Background")) %>% 
+  mutate(rate = (n/adjusted_population)*100000,
+         `Cultural Background` = fct_recode(`Cultural Background`, Aboriginal = "ATSI")) %>%
+  rename("Death rate per 100,000 resident population" = rate)
+
+rates_atsi_residents <- data %>%
+  filter(`Cultural Background` %in% c("ATSI","Other"),
+         State == "SA") %>% 
+  count(Year, `Cultural Background`) %>% # Numerator
+  bind_rows(data %>%
+            count(Year) %>%
+            mutate(`Cultural Background` = "Total")) %>% # Total numerator
+  left_join(yearly_denominators %>%
+            group_by(Year, `Cultural Background`) %>%
+            summarise_at(c("adjusted_population"), sum) %>%
+            ungroup() %>%
+            bind_rows(yearly_denominators %>% # Denominator
+                      group_by(Year) %>%
+                      summarise_at(c("adjusted_population"), sum) %>%
+                      ungroup() %>%
+                      mutate(`Cultural Background` = "Total")), # Total denominator
+            by = c("Year", "Cultural Background")) %>% 
+  mutate(rate = (n/adjusted_population)*100000,
+         `Cultural Background` = fct_recode(`Cultural Background`, Aboriginal = "ATSI")) %>%
+  rename("Death rate per 100,000 resident population" = rate)
+```
+
+```{r}
+average_populations <- yearly_denominators %>% 
+  group_by(Year, `Cultural Background`) %>%
+  summarise(n = sum(adjusted_population)) %>% 
+  group_by(`Cultural Background`) %>% 
+  summarise(population = mean(n))
+
+average_death_rates <- rates_atsi %>%
+  filter(`Cultural Background` != "Total") %>% 
+  group_by(`Cultural Background`) %>% 
+  summarise(mean(`Death rate per 100,000 resident population`))
+
+paste0("During the period 2005 to 2021, Aboriginal children and young people constituted only ",
+       round(average_populations[1,"population"]/sum(average_populations$population)*100,1), "% ", 
+       "of the South Australian population of children and young people, but they accounted for ", 
+       round(nrow(filter(data, `Cultural Background` == "ATSI"))/nrow(data)*100,1), "% of child deaths.")
+```
+```{r}
+average_death_rates_residents <- rates_atsi_residents %>%
+  filter(`Cultural Background` != "Total") %>% 
+  group_by(`Cultural Background`) %>% 
+  summarise(mean(`Death rate per 100,000 resident population`))
+
+paste0("The rate of death for all Aboriginal children and young people who died in South Australia was ", 
+       round(average_death_rates[1,2],1), 
+       " deaths per 100,000. For Aboriginal children and young people who were usually resident in South Australia, the death rate was ", 
+       round(average_death_rates_residents[1,2],1),
+       " deaths per 100,000 over the same period.")
+```
+```{r}
+paste0("The rate of death for non-Aboriginal children and young people was ",
+       round(average_death_rates[2,2],1), 
+       " deaths per 100,000. The rate of death for non-Aboriginal children and young people usually resident in South Australia was ",
+       round(average_death_rates_residents[2,2],1), " deaths per 100,000.")
+```
+
+```{r}
+custom_colours <- c("#000000", "#FEB627", "#7E7E7E", "#27B9FE", "#FFFFFF")
+line_colours <- setNames(custom_colours[c(2, 4)],
+                         c("Aboriginal", "Other"))
+
+yd_df <- filter(rates_atsi, `Cultural Background` %in% c("Aboriginal", "Other"))
+
+(yearly_deaths <- plot_ly(data = yd_df,
+                      type = "scatter",
+                      mode = "lines",
+                      color = ~`Cultural Background`,
+                      colors = line_colours,
+                      x = ~Year,
+                      y = ~`Death rate per 100,000 resident population`,
+                      text = ~format(round(`Death rate per 100,000 resident population`,2)),
+                      hovertemplate = paste0("Number of deaths: ", yd_df$n, "\n",
+                                             "Death rate: ", "%{text}"),
+                      line = list(width = 4)) %>% 
+  layout(xaxis = list(tickvals = list(2005,2007,2009,2011,2013,2015,2017,2019,2021),
+                      range = c(2004, 2022)),
+         yaxis = list(title = "Death rate per 100,000 \n resident population",
+                      range = c(5, 130)),
+         font = list(size = 14),
+         legend = list(x = 0.79, y = 0.92, bgcolor = "rgba(0, 0, 0, 0)")))
+
+# Residents only
+yd_df_residents <- filter(rates_atsi_residents, `Cultural Background` %in% c("Aboriginal", "Other"))
+
+(yearly_deaths_residents <- plot_ly(data = yd_df_residents,
+                      type = "scatter",
+                      mode = "lines",
+                      color = ~`Cultural Background`,
+                      colors = line_colours,
+                      x = ~Year,
+                      y = ~`Death rate per 100,000 resident population`,
+                      text = ~format(round(`Death rate per 100,000 resident population`,2)),
+                      hovertemplate = paste0("Number of deaths: ", yd_df_residents$n, "\n",
+                                             "Death rate: ", "%{text}"),
+                      line = list(width = 4)) %>% 
+  layout(xaxis = list(tickvals = list(2005,2007,2009,2011,2013,2015,2017,2019,2021),
+                      range = c(2004, 2022)),
+         yaxis = list(title = "Death rate per 100,000 \n resident population",
+                      range = c(5, 130)),
+         font = list(size = 14),
+         legend = list(x = 0.79, y = 0.92, bgcolor = "rgba(0, 0, 0, 0)")))
+
+htmlwidgets::saveWidget(yearly_deaths, "Figures/yearly_deaths.html", selfcontained = F, libdir = "index_files")
+htmlwidgets::saveWidget(yearly_deaths_residents, "Figures/yearly_deaths_residents.html", selfcontained = F, libdir = "index_files")
+```
+
+
+```{r}
+seifa_rates <- filter(data, !is.na(SEIFA_disadvantage) & `Cultural Background` %in% c("ATSI", "Other")) %>% 
+  count(SEIFA_disadvantage, `Cultural Background`) %>%
+    left_join(postcode_denominators %>%
+      filter(Year >= 2005 & Year <= 2020,
+             !is.na(SEIFA_disadvantage))  %>%
+      rename(`Cultural Background` = CulturalBackground) %>% 
+      group_by(SEIFA_disadvantage, `Cultural Background`) %>%
+      summarise_at("adjusted_population", sum) %>%
+      mutate(adjusted_population = ifelse(`Cultural Background` == "ATSI", adjusted_population * 1.2, adjusted_population * 1.02),
+             adjusted_population = round(adjusted_population, 0)) %>% 
+      ungroup(), 
+    by = c("SEIFA_disadvantage", "Cultural Background")) %>%
+  mutate(rate = (n/adjusted_population)*100000) %>% 
+  mutate(rate = ifelse(n < 3, 0, rate),
+         `Cultural Background` = fct_recode(`Cultural Background`,
+                                          Aboriginal = "ATSI")) %>% 
+  rename("Death rate per 100,000 resident population" = rate,
+         `Index of Relative Socio-Economic Disadvantage` = SEIFA_disadvantage)
+
+seifa_rates_residents <- filter(data, !is.na(SEIFA_disadvantage), `Cultural Background` %in% c("ATSI", "Other"), State == "SA") %>% 
+  count(SEIFA_disadvantage, `Cultural Background`) %>%
+    left_join(postcode_denominators %>%
+      filter(Year >= 2005 & Year <= 2020,
+             !is.na(SEIFA_disadvantage))  %>%
+      rename(`Cultural Background` = CulturalBackground) %>% 
+      group_by(SEIFA_disadvantage, `Cultural Background`) %>%
+      summarise_at("adjusted_population", sum) %>%
+      mutate(adjusted_population = ifelse(`Cultural Background` == "ATSI", adjusted_population * 1.2, adjusted_population * 1.02),
+             adjusted_population = round(adjusted_population, 0)) %>% 
+      ungroup(), 
+    by = c("SEIFA_disadvantage", "Cultural Background")) %>%
+  mutate(rate = (n/adjusted_population)*100000) %>% 
+  mutate(rate = ifelse(n < 3, 0, rate),
+         `Cultural Background` = fct_recode(`Cultural Background`,
+                                          Aboriginal = "ATSI")) %>% 
+  rename("Death rate per 100,000 resident population" = rate,
+         `Index of Relative Socio-Economic Disadvantage` = SEIFA_disadvantage)
+
+(rates_seifa <- plot_ly(data = seifa_rates,
+                    type = "bar",
+                    color = ~`Cultural Background`,
+                    colors = custom_colours[c(2,4)],
+                    x = ~as.factor(`Index of Relative Socio-Economic Disadvantage`), 
+                    y = ~round(`Death rate per 100,000 resident population`,2),
+                    hovertemplate = paste0("Number of deaths: ", seifa_rates$n, "\n",
+                                           "Death rate: ", "%{y}")) %>% 
+  layout(xaxis = list(title = "Index of Relative Socio-Economic Disadvantage",
+                      ticktext = list("1\n(most disadvantaged)", "2", "3", "4", "5\n(least disadvantaged)"),
+                      tickvals = list(1,2,3,4,5)),
+         yaxis = list(title = "Death rate per 100,000 \n resident population",
+                      range = c(0, 140)),
+         font = list(size = 14),
+         legend = list(x=0.82, y=0.955, bgcolor='rgba(0,0,0,0)')))
+
+(rates_seifa_residents <- plot_ly(data = seifa_rates_residents,
+                    type = "bar",
+                    color = ~`Cultural Background`,
+                    colors = custom_colours[c(2,4)],
+                    x = ~as.factor(`Index of Relative Socio-Economic Disadvantage`), 
+                    y = ~round(`Death rate per 100,000 resident population`,2),
+                    hovertemplate = paste0("Number of deaths: ", seifa_rates_residents$n, "\n",
+                                           "Death rate: ", "%{y}")) %>% 
+  layout(xaxis = list(title = "Index of Relative Socio-Economic Disadvantage",
+                      ticktext = list("1\n(most disadvantaged)", "2", "3", "4", "5\n(least disadvantaged)"),
+                      tickvals = list(1,2,3,4,5)),
+         yaxis = list(title = "Death rate per 100,000 \n resident population",
+                      range = c(0, 140)),
+         font = list(size = 14),
+         legend = list(x=0.82, y=0.955, bgcolor='rgba(0,0,0,0)')))
+
+htmlwidgets::saveWidget(rates_seifa, "Figures/rates_seifa.html", selfcontained = F, libdir = "index_files")
+htmlwidgets::saveWidget(rates_seifa_residents, "Figures/rates_seifa_residents.html", selfcontained = F, libdir = "index_files")
+```
+
+By region
+```{r}
+map_colours <- c("#FFFFFF", "#FEB627")
+pal <- colorRampPalette(map_colours)
+colourscale <- pal(100)
+
+map_df_json <- rjson::fromJSON(file = "C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\Population\\gov_regions/SAGovtRegions_GDA2020.json")
+
+rates_regions <- data %>%
+    filter(is.na(Region) == FALSE) %>%
+    count(Region, `Cultural Background`) %>%
+    complete(Region, `Cultural Background`, fill = list(n = 0)) %>% 
+  left_join(postcode_denominators %>% 
+              filter(is.na(Region) == FALSE) %>%
+              rename("Cultural Background" = CulturalBackground) %>% 
+              group_by(Region, `Cultural Background`) %>%
+              summarise_at("adjusted_population", sum) %>%
+              ungroup(), 
+            by = c("Region", "Cultural Background")) %>%
+  mutate(rate = (n/adjusted_population)*100000)
+
+rates_regions_atsi = filter(rates_regions, `Cultural Background` == "ATSI")
+
+(regions_map <- plot_ly() %>% 
+  add_trace(type="choroplethmapbox",
+            geojson=map_df_json,
+            locations=rates_regions_atsi$Region,
+            z=round(rates_regions_atsi$rate,2),
+            colors=colourscale,
+            zmax=240,
+            zmin=0,
+            featureidkey="properties.region",
+            marker=list(opacity=0.75),
+            text=rates_regions_atsi$Region,
+            hovertemplate=paste0("Death rate: %{z} \n",
+                                 "Number of deaths: ", rates_regions_atsi$n, "\n",
+                                 "Average population: ", round(rates_regions_atsi$adjusted_population/17,0), " Aboriginal children\n",
+                                 "<extra>%{text}</extra>")) %>% 
+  colorbar(title = "Death rate\nper 100,000\nresident\npopulation\n \n ",
+           x=1, y=1,
+           len=1) %>% 
+  layout(mapbox=list(style="carto-positron",
+                     zoom=4.5,
+                     center=list(lon=135, lat=-33))))
+
+htmlwidgets::saveWidget(regions_map, "Figures/regions_map.html", selfcontained = F, libdir = "index_files")
+```
+
+Deaths by age group and category
+```{r}
+bar_colours <- c("#FEB627", "#27B9FE", "sienna2", "slateblue2", "mediumseagreen", "maroon3")
+
+cod_agegroup <- data %>% 
+  filter(`Cultural Background` == "Other") %>% 
+  group_by(`Age Group`, `COD Category`) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  complete(`Age Group`, `COD Category`, fill = list(n = 0)) %>% 
+  mutate(`COD Category` = fct_relevel(`COD Category`, "natural", "transport-related", "undetermined"))
+
+cod_agegroup_atsi <- data %>% 
+  filter(`Cultural Background` == "ATSI") %>% 
+  group_by(`Age Group`, `COD Category`) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  complete(`Age Group`, `COD Category`, fill = list(n = 0)) %>% 
+  mutate(`COD Category` = fct_relevel(`COD Category`, "natural", "transport-related", "undetermined"))
+
+(cod_age_group <- plot_ly(data = cod_agegroup,
+              type = "bar",
+              x = ~`Age Group`,
+              y = ~n,
+              color = ~`COD Category`,
+              colors = bar_colours,
+              hovertemplate = paste0("Number of deaths: ", "%{y}")) %>% 
+        
+        layout(autosize=T,
+               margin = list(l=10, r=10, t=100, b=20, pad=4),
+               barmode = "stack",
+               yaxis = list(title = "Number of deaths",
+                            titlefont = list(size = 16),
+                            #range = c(0, 620),
+                            tickfont = list(size=14)),
+               xaxis = list(title = "Age group",
+                            titlefont = list(size = 16),
+                            tickfont = list(size=14)),
+               #title = list(text = "")
+               legend = list(orientation='h',
+                             y=170,
+                             y=1,
+                             font = list(size=12))
+          ))
+
+(cod_age_group_atsi <- plot_ly(data = cod_agegroup_atsi,
+              type = "bar",
+              x = ~`Age Group`,
+              y = ~n,
+              color = ~`COD Category`,
+              colors = bar_colours,
+              hovertemplate = paste0("Number of deaths: ", "%{y}")) %>% 
+        
+        layout(autosize=T,
+               margin = list(l=10, r=10, t=100, b=20, pad=4),
+               barmode = "stack",
+               yaxis = list(title = "Number of deaths",
+                            titlefont = list(size = 16),
+                            #range = c(0, 620),
+                            tickfont = list(size=14)),
+               xaxis = list(title = "Age group",
+                            titlefont = list(size = 16),
+                            tickfont = list(size=14)),
+               #title = list(text = "")
+               legend = list(orientation='h',
+                             y=170,
+                             y=1,
+                             font = list(size=12))
+          ))
+
+htmlwidgets::saveWidget(cod_age_group, "Figures/cod_age.html", selfcontained = F, libdir = "index_files")
+htmlwidgets::saveWidget(cod_age_group_atsi, "Figures/cod_age_atsi.html", selfcontained = F, libdir = "index_files")
+```
+
+
