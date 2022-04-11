@@ -21,7 +21,14 @@ exclusions <- readxl::read_xlsx("C:\\Users\\jagvan\\OneDrive - South Australia G
 yearly_denominators <- read_csv("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\Population\\yearly_denominators.csv")
 postcode_denominators <- read_csv("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\Population\\postcode_denominators_SRA.csv") %>% 
   mutate(Postcode = as.character(Postcode))
-age_denominators <- read_csv("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\Population\\my_denominators.csv")
+age_denominators <- read_csv("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\Population\\my_denominators.csv") %>% 
+  mutate(`Age Group` = case_when(
+                              `Age (years)` == 0 ~ "1 to 11 months",
+                              `Age (years)` %in% seq(1,4) ~ "1 to 4 years",
+                              `Age (years)` %in% seq(5,9) ~ "5 to 9 years",
+                              `Age (years)` %in% seq(10,14) ~ "10 to 14 years",
+                              `Age (years)` %in% seq(15,17) ~ "15 to 17 years"
+  ))
 ```
 
 Import data
@@ -284,7 +291,7 @@ rates_regions <- data %>%
 
 rates_regions_atsi = filter(rates_regions, `Cultural Background` == "ATSI")
 
-(regions_map <- plot_ly() %>% 
+(regions_map_rate <- plot_ly() %>% 
   add_trace(type="choroplethmapbox",
             geojson=map_df_json,
             locations=rates_regions_atsi$Region,
@@ -306,7 +313,30 @@ rates_regions_atsi = filter(rates_regions, `Cultural Background` == "ATSI")
                      zoom=4.5,
                      center=list(lon=135, lat=-33))))
 
-htmlwidgets::saveWidget(regions_map, "Figures/regions_map.html", selfcontained = F, libdir = "index_files")
+(regions_map_number <- plot_ly() %>% 
+  add_trace(type="choroplethmapbox",
+            geojson=map_df_json,
+            locations=rates_regions_atsi$Region,
+            z=rates_regions_atsi$n,
+            colors=colourscale,
+            #zmax=240,
+            #zmin=0,
+            featureidkey="properties.region",
+            marker=list(opacity=0.75),
+            text=rates_regions_atsi$Region,
+            hovertemplate=paste0("Number of deaths: ", rates_regions_atsi$n, "\n",
+                                 "Death rate: ", round(rates_regions_atsi$rate,0), "\n",
+                                 "Average population: ", round(rates_regions_atsi$adjusted_population/17,0), " Aboriginal children\n",
+                                 "<extra>%{text}</extra>")) %>% 
+  colorbar(title = "Number of\ndeaths",
+           x=1, y=1,
+           len=1) %>% 
+  layout(mapbox=list(style="carto-positron",
+                     zoom=4.5,
+                     center=list(lon=135, lat=-33))))
+
+htmlwidgets::saveWidget(regions_map_rate, "Figures/regions_map_rates.html", selfcontained = F, libdir = "index_files")
+htmlwidgets::saveWidget(regions_map_number, "Figures/regions_map_number.html", selfcontained = F, libdir = "index_files")
 ```
 
 Deaths by age group and category
@@ -319,7 +349,8 @@ cod_agegroup <- data %>%
   summarise(n = n()) %>% 
   ungroup() %>% 
   complete(`Age Group`, `COD Category`, fill = list(n = 0)) %>% 
-  mutate(`COD Category` = fct_relevel(`COD Category`, "natural", "transport-related", "undetermined"))
+  mutate(`COD Category` = fct_relevel(`COD Category`, "natural", "transport-related", "undetermined")) %>% 
+  left_join(filter(age_denominators, `Cultural Background` == "Other"), by = c("Age Group"))
 
 cod_agegroup_atsi <- data %>% 
   filter(`Cultural Background` == "ATSI") %>% 
