@@ -5,6 +5,10 @@ function setIframe() {
   document.getElementById("figure-display").src = selection;
   buttons = document.querySelector('#buttonBlock');
   var subButtons = document.querySelectorAll("button.sub-button");
+  var p1 = document.getElementById('p1');
+  var p2 = document.getElementById('p2');
+  var p3 = document.getElementById('p3');
+
   switch(selectionID) {
     case 'figure1':
       buttons.style.display = 'flex';
@@ -16,6 +20,9 @@ function setIframe() {
         button.classList.remove('activeButton')
       });
       document.querySelector('button.sub-button').classList.add('activeButton');
+      p1.classList.remove('hidden');
+      p2.classList.remove('hidden');
+      p3.classList.add('hidden');
       break;
     case 'figure2':
       buttons.style.display = 'flex';
@@ -27,6 +34,9 @@ function setIframe() {
         button.classList.remove('activeButton')
       });
       document.querySelector('button.sub-button').classList.add('activeButton');
+      p1.classList.add('hidden');
+      p2.classList.add('hidden');
+      p3.classList.remove('hidden');
       break;
       case 'figure3':
         buttons.style.display = 'flex';
@@ -38,6 +48,9 @@ function setIframe() {
           button.classList.remove('activeButton')
         });
         document.querySelector('button.sub-button').classList.add('activeButton');
+        p1.classList.add('hidden');
+        p2.classList.add('hidden');
+        p3.classList.add('hidden');
         break;
     case 'figure4':
       buttons.style.display = 'flex';
@@ -49,6 +62,9 @@ function setIframe() {
         button.classList.remove('activeButton')
       });
       document.querySelector('button.sub-button').classList.add('activeButton');
+      p1.classList.add('hidden');
+      p2.classList.add('hidden');
+      p3.classList.add('hidden');
       break;
     default:
       buttons.style.display = 'none';
