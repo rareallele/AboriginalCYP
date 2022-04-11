@@ -30,10 +30,10 @@ function setIframe() {
       break;
       case 'figure3':
         buttons.style.display = 'flex';
-        subButtons[0].value = "Figures\\regions_map_rates.html";
-        subButtons[0].innerHTML = "Death rate";
-        subButtons[1].value = "Figures\\regions_map_number.html";
-        subButtons[1].innerHTML = "Number of deaths";
+        subButtons[0].value = "Figures\\regions_map_number.html";
+        subButtons[0].innerHTML = "Number of deaths";
+        subButtons[1].value = "Figures\\regions_map_rates.html";
+        subButtons[1].innerHTML = "Death rate";
         subButtons.forEach(function(button) {
           button.classList.remove('activeButton')
         });
